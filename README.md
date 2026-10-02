@@ -48,11 +48,36 @@ implementation, one layer below this package.
   sharing one instance. Full decision history: `EphemNet`'s own
   `plan/designs/D012-real-lightning-backed-paylayer-backend.md`.
 
+- `StripeBackend` — a self-verifying `Backend`+`Issuer` for
+  Stripe-gated purchases, mechanically near-identical to `HMACBackend`
+  (same nonce+expiry+HMAC-SHA256 wire shape, no network call, no
+  shared state), with one real addition: every token also carries a
+  signed, tamper-evident **`Quantity`** (`IssueTopUp(ctx, quantity)` +
+  `Quantity(token) (int, bool)`), so a caller can recover not just
+  "was this purchase valid" but "how many units were purchased" — for
+  a metered product sold in predefined top-up packages (e.g.
+  EphemNet's own `ephemnet-relay`, by the GB), where a flat yes/no
+  isn't enough information to credit the right amount to an internal
+  usage ledger. Plain `Issue` (satisfying `Issuer`) mints a flat
+  `Quantity` of 1, for a non-metered purchase (e.g. `ephemnet-domain`'s
+  own annual subscription) with nothing to count. Contains zero
+  Stripe-specific vocabulary of its own (no webhook signature
+  verification, no price IDs, no Checkout Session parsing, no Stripe
+  SDK dependency) — same reasoning `HMACBackend` has no Lightning
+  vocabulary; a product's own Stripe webhook handler decides when to
+  call `Issue`/`IssueTopUp` and with what `Quantity`, entirely outside
+  this package. Interim/parallel to `HMACBackend`, not a replacement —
+  either can issue a token for the same product, and a listener gated
+  by `RequireToken` can't tell which payment method produced the token
+  it's holding, by design. Full decision history: `EphemNet`'s own
+  `plan/designs/D012-real-lightning-backed-paylayer-backend.md`.
+
 - `Issuer` and `IssueHandler(issuer Issuer)` — the generic "mint a
   token and hand it back as JSON" glue any issuer-fronting service
   needs, regardless of what actually gates the call. `Issuer` is
-  deliberately separate from `Backend` (only `Mock`/`HMACBackend`
-  implement it; `StaticBackend` never issues anything). `IssueHandler`
+  deliberately separate from `Backend` (only `Mock`/`HMACBackend`/
+  `StripeBackend` implement it; `StaticBackend` never issues anything).
+  `IssueHandler`
   has no payment vocabulary of its own — whatever sits in front of it
   (a self-hosted Aperture instance gating on a real Lightning
   payment, a test harness, anything else) decides whether a given
