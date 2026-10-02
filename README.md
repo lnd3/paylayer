@@ -48,21 +48,30 @@ implementation, one layer below this package.
   sharing one instance. Full decision history: `EphemNet`'s own
   `plan/designs/D012-real-lightning-backed-paylayer-backend.md`.
 
+- `Issuer` and `IssueHandler(issuer Issuer)` — the generic "mint a
+  token and hand it back as JSON" glue any issuer-fronting service
+  needs, regardless of what actually gates the call. `Issuer` is
+  deliberately separate from `Backend` (only `Mock`/`HMACBackend`
+  implement it; `StaticBackend` never issues anything). `IssueHandler`
+  has no payment vocabulary of its own — whatever sits in front of it
+  (a self-hosted Aperture instance gating on a real Lightning
+  payment, a test harness, anything else) decides whether a given
+  request is even allowed to reach it. POST-only (issuing a token is
+  a real side effect, not an idempotent read).
+
 ## What's deliberately not here yet
 
-The actual Lightning/L402-gated issuer (invoice, macaroon, preimage)
-— a separate, product-side HTTP handler that calls
-`HMACBackend.Issue` once a real payment is confirmed, fronted by a
-self-hosted Aperture instance. That logic stays out of `paylayer`
-entirely, matching this package's own payment-mechanism-agnostic
-contract — `paylayer` never gains Lightning/Aperture vocabulary.
-Being built directly in EphemNet (the Aperture-facing glue and
-`-paid-registration-addr` wiring are genuinely product-specific,
-unlike `HMACBackend` itself).
+The actual Lightning/L402 gating itself (invoice, macaroon, preimage)
+— that's entirely Aperture's own job, configured to front
+`IssueHandler`, fronted by whatever reverse proxy a consumer already
+uses (EphemNet's case: the Aperture-facing listener and
+`-paid-registration-addr` wiring, both genuinely product-specific, so
+built directly in EphemNet, not here). `paylayer` never gains
+Lightning/Aperture vocabulary of its own.
 
 Consumers other than EphemNet (`cinder`, `persona`) pick up
-`HMACBackend` for free on their next version bump — no action needed
-until then.
+`HMACBackend`/`IssueHandler` for free on their next version bump — no
+action needed until then.
 
 ## Origin
 
