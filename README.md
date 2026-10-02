@@ -32,43 +32,36 @@ implementation, one layer below this package.
   configurable failure rate for soak-style resilience testing. A mock
   that always succeeds instantly only ever proves the happy path.
 
+- `HMACBackend` — a self-verifying `Backend`: `Issue` mints a token
+  whose own bytes carry a random nonce, an embedded expiry, and an
+  HMAC-SHA256 signature over both; `Verify` checks the signature and
+  expiry with **no network call and no shared state** — same cost
+  profile as `StaticBackend`, while still proving whoever presents a
+  token is holding something only `Issue`'s own caller could have
+  produced (the same signing key, `NewHMACBackend(key []byte)`).
+  `paylayer` itself never generates, stores, or rotates that key —
+  that's the embedding product's own operational concern (EphemNet's
+  case: a flag/env-provided secret, generated once via
+  `openssl rand -hex 32`). Only becomes a key-*distribution* question
+  if a consumer runs issuance and verification in separate processes
+  — most consumers (EphemNet included) run both in one process
+  sharing one instance. Full decision history: `EphemNet`'s own
+  `plan/designs/D012-real-lightning-backed-paylayer-backend.md`.
+
 ## What's deliberately not here yet
 
-A real payment-verified backend (Lightning/L402 via Aperture, or
-anything else) — planned as its own package here once built, kept
-physically separate from the contract so a second real backend
-doesn't need to touch it.
+The actual Lightning/L402-gated issuer (invoice, macaroon, preimage)
+— a separate, product-side HTTP handler that calls
+`HMACBackend.Issue` once a real payment is confirmed, fronted by a
+self-hosted Aperture instance. That logic stays out of `paylayer`
+entirely, matching this package's own payment-mechanism-agnostic
+contract — `paylayer` never gains Lightning/Aperture vocabulary.
+Being built directly in EphemNet (the Aperture-facing glue and
+`-paid-registration-addr` wiring are genuinely product-specific,
+unlike `HMACBackend` itself).
 
-### Planned: `HMACBackend`
-
-Designed, not yet built (tracked in `EphemNet`'s own
-`plan/designs/D012-real-lightning-backed-paylayer-backend.md`, which
-owns the full decision history — this section only summarizes the
-contract `paylayer` itself needs to expose).
-
-- Mirrors `Mock`'s shape: `Issue(ctx) (PurchaseToken, error)` +
-  `Verify(ctx, token) (bool, error)`.
-- Backed by a single HMAC signing key, supplied by whoever constructs
-  it (e.g. `NewHMACBackend(key []byte)`) — `paylayer` itself never
-  generates, stores, or rotates this key; that's the embedding
-  product's own operational concern (EphemNet's case: a flag/env-
-  provided secret, generated once via `openssl rand -hex 32`,
-  documented in that product's own deploy config, not here).
-- `Issue` mints a self-verifying token (signed payload + embedded
-  expiry); `Verify` checks the signature and expiry with **no network
-  call and no shared state** — same cost profile as `StaticBackend`.
-- Only becomes a key-*distribution* question if a consumer runs
-  issuance and verification in separate processes — most consumers
-  (EphemNet included) run both in one process sharing one instance,
-  so the key never needs to leave process memory.
-- A real Lightning/Aperture-backed issuer (invoice, macaroon,
-  preimage) is a separate, product-side HTTP handler that calls
-  `Issue` once payment is confirmed — that logic stays out of
-  `paylayer` entirely, matching this package's existing
-  payment-mechanism-agnostic contract.
-
-Consumers other than EphemNet (`cinder`, `persona`) pick this up for
-free on their next version bump once it's released — no action needed
+Consumers other than EphemNet (`cinder`, `persona`) pick up
+`HMACBackend` for free on their next version bump — no action needed
 until then.
 
 ## Origin
