@@ -84,6 +84,15 @@ implementation, one layer below this package.
   request is even allowed to reach it. POST-only (issuing a token is
   a real side effect, not an idempotent read).
 
+- `MultiBackend` — a `Backend` composed of several real backends,
+  valid if ANY confirms a token. Exists for exactly the situation a
+  second payment rail creates (EphemNet's own case: `HMACBackend`
+  for Lightning, `StripeBackend` for Stripe, different keys and wire
+  formats, one listener needing to accept either's output) — tries
+  each in order, short-circuits on the first confirmed-valid result,
+  and only surfaces an error if every backend failed outright (none
+  could even answer) rather than merely "didn't confirm this one."
+
 ## What's deliberately not here yet
 
 The actual Lightning/L402 gating itself (invoice, macaroon, preimage)
