@@ -154,3 +154,54 @@ func TestStripeCheckoutCreateSession_StripeErrorSurfaced(t *testing.T) {
 		t.Errorf("error doesn't mention the real Stripe error detail: %v", err)
 	}
 }
+
+func TestGetPrice_SendsExpectedRequestAndParsesResponse(t *testing.T) {
+	var gotMethod, gotPath, gotAuthUser string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		user, _, _ := r.BasicAuth()
+		gotAuthUser = user
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id":"price_abc","unit_amount":499,"currency":"usd"}`)
+	}))
+	defer server.Close()
+
+	c := NewStripeCheckoutClient("sk_test_secret")
+	c.BaseURL = server.URL
+	price, err := c.GetPrice("price_abc")
+	if err != nil {
+		t.Fatalf("GetPrice: %v", err)
+	}
+
+	if gotMethod != http.MethodGet {
+		t.Errorf("method = %q, want GET", gotMethod)
+	}
+	if gotPath != "/v1/prices/price_abc" {
+		t.Errorf("path = %q, want /v1/prices/price_abc", gotPath)
+	}
+	if gotAuthUser != "sk_test_secret" {
+		t.Errorf("basic auth user = %q, want the API key", gotAuthUser)
+	}
+	if price.ID != "price_abc" || price.UnitAmount != 499 || price.Currency != "usd" {
+		t.Errorf("unexpected price: %+v", price)
+	}
+}
+
+func TestGetPrice_StripeErrorSurfaced(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, `{"error":{"message":"No such price: 'price_missing'"}}`)
+	}))
+	defer server.Close()
+
+	c := NewStripeCheckoutClient("sk_test_secret")
+	c.BaseURL = server.URL
+	_, err := c.GetPrice("price_missing")
+	if err == nil {
+		t.Fatal("expected Stripe's own error response to surface as an error")
+	}
+	if !strings.Contains(err.Error(), "price_missing") {
+		t.Errorf("error doesn't mention the real Stripe error detail: %v", err)
+	}
+}

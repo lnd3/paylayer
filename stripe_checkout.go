@@ -155,3 +155,54 @@ func (c *StripeCheckoutClient) CreateSession(params StripeCheckoutSessionParams)
 	}
 	return StripeCheckoutSession{ID: raw.ID, URL: raw.URL}, nil
 }
+
+// StripePrice is the subset of a Stripe Price object GetPrice
+// actually returns — just enough to show a real amount to a human
+// before they click "buy," without needing to keep that figure
+// hand-maintained separately from whatever the Price actually charges
+// in the Stripe dashboard.
+type StripePrice struct {
+	ID         string
+	UnitAmount int64 // smallest currency unit (cents for USD) — 0 if the Price has no fixed unit amount
+	Currency   string
+}
+
+// GetPrice retrieves a single Price's real amount/currency —
+// GET /v1/prices/{id}, no product vocabulary of its own, same
+// reasoning every other type in this file already gives for living
+// here rather than per-repo.
+func (c *StripeCheckoutClient) GetPrice(priceID string) (StripePrice, error) {
+	baseURL := c.BaseURL
+	if baseURL == "" {
+		baseURL = stripeCheckoutDefaultBaseURL
+	}
+	req, err := http.NewRequest(http.MethodGet, baseURL+"/v1/prices/"+url.PathEscape(priceID), nil)
+	if err != nil {
+		return StripePrice{}, err
+	}
+	req.SetBasicAuth(c.apiKey, "")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return StripePrice{}, fmt.Errorf("calling Stripe: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return StripePrice{}, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return StripePrice{}, fmt.Errorf("stripe API %s: %s", resp.Status, body)
+	}
+
+	var raw struct {
+		ID         string `json:"id"`
+		UnitAmount int64  `json:"unit_amount"`
+		Currency   string `json:"currency"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return StripePrice{}, fmt.Errorf("decoding Stripe response: %w", err)
+	}
+	return StripePrice{ID: raw.ID, UnitAmount: raw.UnitAmount, Currency: raw.Currency}, nil
+}
