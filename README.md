@@ -93,6 +93,23 @@ implementation, one layer below this package.
   and only surfaces an error if every backend failed outright (none
   could even answer) rather than merely "didn't confirm this one."
 
+- `VerifyStripeWebhookSignature` and `StripeCheckoutClient` (+
+  `NewStripeCheckoutClient`, `StripeLineItem`, `StripeCheckoutSessionParams`,
+  `StripeCheckoutSession`) — the two genuinely Stripe-generic
+  mechanics any consumer wiring in a Stripe billing rail needs, pulled
+  out of EphemNet's own `internal/` once a second consumer (`cinder`/
+  `offgridapp`) needed the identical code: hand-rolled webhook
+  signature verification (Stripe's own documented `t=...,v1=...`
+  scheme, no `stripe-go` SDK dependency) and Checkout Session creation
+  (`POST /v1/checkout/sessions`, plain form-encoded REST). Neither has
+  any product vocabulary of its own — no domains, no line-item
+  meaning beyond what the caller supplies — matching `StripeBackend`'s
+  own reasoning for living here. What each consumer still builds
+  itself: the actual product dispatch (which Price maps to what,
+  which of its own internal endpoints a completed purchase redeems
+  against) — that part is inherently per-product, same as it's always
+  been.
+
 ## What's deliberately not here yet
 
 The actual Lightning/L402 gating itself (invoice, macaroon, preimage)
