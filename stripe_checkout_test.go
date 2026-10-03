@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -202,6 +203,69 @@ func TestGetPrice_StripeErrorSurfaced(t *testing.T) {
 		t.Fatal("expected Stripe's own error response to surface as an error")
 	}
 	if !strings.Contains(err.Error(), "price_missing") {
+		t.Errorf("error doesn't mention the real Stripe error detail: %v", err)
+	}
+}
+
+func TestRefund_SendsExpectedRequest(t *testing.T) {
+	var gotMethod, gotPath, gotAuthUser, gotBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		user, _, _ := r.BasicAuth()
+		gotAuthUser = user
+		body, _ := io.ReadAll(r.Body)
+		gotBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id":"re_abc","status":"succeeded"}`)
+	}))
+	defer server.Close()
+
+	c := NewStripeCheckoutClient("sk_test_secret")
+	c.BaseURL = server.URL
+	if err := c.Refund("pi_abc"); err != nil {
+		t.Fatalf("Refund: %v", err)
+	}
+
+	if gotMethod != http.MethodPost {
+		t.Errorf("method = %q, want POST", gotMethod)
+	}
+	if gotPath != "/v1/refunds" {
+		t.Errorf("path = %q, want /v1/refunds", gotPath)
+	}
+	if gotAuthUser != "sk_test_secret" {
+		t.Errorf("basic auth user = %q, want the API key", gotAuthUser)
+	}
+	values, err := url.ParseQuery(gotBody)
+	if err != nil {
+		t.Fatalf("parsing request body: %v", err)
+	}
+	if got := values.Get("payment_intent"); got != "pi_abc" {
+		t.Errorf("payment_intent = %q, want pi_abc", got)
+	}
+}
+
+func TestRefund_MissingPaymentIntentID_Rejected(t *testing.T) {
+	c := NewStripeCheckoutClient("sk_test_secret")
+	if err := c.Refund(""); err == nil {
+		t.Fatal("expected an error for an empty paymentIntentID")
+	}
+}
+
+func TestRefund_StripeErrorSurfaced(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"error":{"message":"Charge pi_missing has already been refunded"}}`)
+	}))
+	defer server.Close()
+
+	c := NewStripeCheckoutClient("sk_test_secret")
+	c.BaseURL = server.URL
+	err := c.Refund("pi_missing")
+	if err == nil {
+		t.Fatal("expected Stripe's own error response to surface as an error")
+	}
+	if !strings.Contains(err.Error(), "pi_missing") {
 		t.Errorf("error doesn't mention the real Stripe error detail: %v", err)
 	}
 }

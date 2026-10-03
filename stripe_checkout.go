@@ -206,3 +206,44 @@ func (c *StripeCheckoutClient) GetPrice(priceID string) (StripePrice, error) {
 	}
 	return StripePrice{ID: raw.ID, UnitAmount: raw.UnitAmount, Currency: raw.Currency}, nil
 }
+
+// Refund issues a full refund for a completed Checkout Session's own
+// PaymentIntent — POST /v1/refunds, no product vocabulary of its own
+// (same reasoning every other type in this file already gives for
+// living here rather than per-repo). A plain full refund only — no
+// partial-amount or reason parameter, since this package's only
+// consumer so far needs exactly one case: a purchase that genuinely
+// couldn't be fulfilled after payment succeeded.
+func (c *StripeCheckoutClient) Refund(paymentIntentID string) error {
+	if paymentIntentID == "" {
+		return fmt.Errorf("paylayer: paymentIntentID is required")
+	}
+	form := url.Values{}
+	form.Set("payment_intent", paymentIntentID)
+
+	baseURL := c.BaseURL
+	if baseURL == "" {
+		baseURL = stripeCheckoutDefaultBaseURL
+	}
+	req, err := http.NewRequest(http.MethodPost, baseURL+"/v1/refunds", strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(c.apiKey, "")
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("calling Stripe: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("stripe API %s: %s", resp.Status, body)
+	}
+	return nil
+}

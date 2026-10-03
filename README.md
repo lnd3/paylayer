@@ -98,7 +98,10 @@ implementation, one layer below this package.
   `StripeCheckoutSession`, `StripePrice`/`GetPrice` — fetches a
   Price's real amount/currency, so a trigger page can show a human
   what something actually costs without hand-maintaining that figure
-  separately from the Stripe dashboard) — the genuinely Stripe-generic
+  separately from the Stripe dashboard; `Refund` — a plain full
+  refund of a completed session's own PaymentIntent, for a purchase
+  that charged successfully but genuinely couldn't be fulfilled) —
+  the genuinely Stripe-generic
   mechanics any consumer wiring in a Stripe billing rail needs, pulled
   out of EphemNet's own `internal/` once a second consumer (`cinder`/
   `offgridapp`) needed the identical code: hand-rolled webhook
