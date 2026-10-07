@@ -72,11 +72,26 @@ implementation, one layer below this package.
   it's holding, by design. Full decision history: `EphemNet`'s own
   `plan/designs/D012-real-lightning-backed-paylayer-backend.md`.
 
+- `Ed25519Backend` — a self-verifying `Backend`+`Issuer` like
+  `HMACBackend`, but asymmetric: `NewEd25519IssuerBackend` holds the
+  real private key and can both mint and verify; `NewEd25519VerifierBackend`
+  holds only the public half and can only verify — safe to embed in
+  any number of distributed clients this project doesn't control the
+  deployment of at all (`cinder`'s own case: `cindertunnel`, run on a
+  customer's machine, independently verifying a *peer's* license with
+  no network call and nothing that could forge one). `HMACBackend`'s
+  own doc comment already explains why that split matters: its
+  verification key IS its signing key, so no consumer can safely
+  embed it client-side. Same wire shape otherwise (nonce + expiry +
+  signature), same `Backend`/`Issuer` interfaces — drop-in alongside
+  `HMACBackend`/`StripeBackend`, combinable via `MultiBackend` too.
+
 - `Issuer` and `IssueHandler(issuer Issuer)` — the generic "mint a
   token and hand it back as JSON" glue any issuer-fronting service
   needs, regardless of what actually gates the call. `Issuer` is
   deliberately separate from `Backend` (only `Mock`/`HMACBackend`/
-  `StripeBackend` implement it; `StaticBackend` never issues anything).
+  `StripeBackend`/`Ed25519Backend` implement it; `StaticBackend` never
+  issues anything).
   `IssueHandler`
   has no payment vocabulary of its own — whatever sits in front of it
   (a self-hosted Aperture instance gating on a real Lightning
